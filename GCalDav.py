@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 from config import global_date
 from caldav_helper import CaldavHelper
 
-DELTA_TO = 14
+DELTA_TO = 3
 DELTA_FROM = 0
 
 class GoogleCalDav:
