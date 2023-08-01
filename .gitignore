@@ -2,5 +2,5 @@ yAuth.py
 .env
 users_list.csv
 logEvents
-gycalsync.p12
 caldav.txt
+secret.json

@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 from config import global_date
 from caldav_helper import CaldavHelper
 
-DELTA_TO = 1
+DELTA_TO = 14
 DELTA_FROM = 0
 
 class YandexCalDav:
@@ -138,27 +138,6 @@ class YandexCalDav:
     def delete_g_events_others_period(self):
         for uid in self.period_events_list:
             if 'google.com' not in uid:
-                continue
-
-            #Begin
-            caldav_text = self.get_event_by_uid(uid)
-            cd_helper = CaldavHelper(caldav_text)
-
-            #Events properties
-            summary = cd_helper.get_summary()
-            organizer = cd_helper.get_org_from_main_body()
-
-            if self.user_email not in organizer:
-                self.delete_event_by_uid(uid)
-                print(f'Delete {summary}')
-            print('\n<==========================>\n')
-
-    def delete_g_events_not_pik_syncer_others_period(self):
-        for uid in self.period_events_list:
-            if 'google.com' not in uid:
-                continue
-
-            if 'PIK_SYNCER' in uid:
                 continue
 
             #Begin

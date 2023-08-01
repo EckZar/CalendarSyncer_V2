@@ -5,19 +5,18 @@ import xml.etree.ElementTree as ET
 from config import global_date
 from caldav_helper import CaldavHelper
 
-DELTA_TO = 1
+DELTA_TO = 14
 DELTA_FROM = 0
 
 class GoogleCalDav:
     def __init__(self, user_email):
         self.user_email: str = user_email
-        self.token: str = get_access_token(user_email)
         self.base_url: str = 'https://apidata.googleusercontent.com'
         self.events_uids_list: list = []
         self.period_events_list: list = []
         self.events_list_broken: list = []
         self.headers = {
-            'Authorization': f'Bearer {self.token}'
+            'Authorization': f'Bearer {get_access_token(user_email)}'
         }
         self.get_all_events()
         self.get_events_from_to_dates()
@@ -43,6 +42,7 @@ class GoogleCalDav:
 
         time_range = f"<C:time-range start=\"{date_from}\" " \
                      f"              end=\"{date_to}\"/>"
+
         payload = "<?xml version=\"1.0\" encoding=\"utf-8\" ?>\r\n" \
                   "<C:calendar-query xmlns:D=\"DAV:\"\r\n" \
                                     "xmlns:C=\"urn:ietf:params:xml:ns:caldav\">\r\n\r\n\r\n" \
@@ -107,27 +107,6 @@ class GoogleCalDav:
     def delete_event_by_uid(self, uid):
         url = f"{self.base_url}/caldav/v2/{self.user_email}/events/{uid}.ics"
         return requests.request("DELETE", url, headers=self.headers)
-
-    def delete_y_events_not_pik_syncer_others_period(self):
-        for uid in self.period_events_list:
-            if 'yandex.ru' not in uid:
-                continue
-
-            if 'PIK_SYNCER' in uid:
-                continue
-
-            #Begin
-            caldav_text = self.get_event_by_uid(uid)
-            cd_helper = CaldavHelper(caldav_text)
-
-            #Events properties
-            summary = cd_helper.get_summary()
-            organizer = cd_helper.get_org_from_main_body()
-
-            if self.user_email not in organizer:
-                self.delete_event_by_uid(uid)
-                print(f'Delete {summary}')
-            print('\n<==========================>\n')
 
     def delete_y_events_others_period(self):
         for uid in self.period_events_list:

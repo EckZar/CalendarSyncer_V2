@@ -13,60 +13,52 @@ class Synchronizer:
         self.user_email = user_email
         self.g_caldav_service = GoogleCalDav(user_email)
         self.y_caldav_service = YandexCalDav(user_email)
-        self.Logger = Logger()
+        self.Logger = Logger(user_email, datetime.datetime.now().strftime("%H:%M:%S"))
 
     def get_time(self):
-        return datetime.datetime.now().strftime('%Y%m%dT%H%M%SZ')
+        return datetime.datetime.now().strftime('%H:%M:%S')
 
     def sync_google_events_to_yandex(self) -> None:
 
-        for uid in self.g_caldav_service.period_events_list:
+        for _ in self.g_caldav_service.period_events_list:
             try:
-                if 'yandex.ru' in uid:
+                if 'yandex.ru' in _:
                     continue
-                print(uid)
 
-                caldav_event = self.g_caldav_service.get_event_by_uid(uid)
+                caldav_event = self.g_caldav_service.get_event_by_uid(_)
 
                 if 'No events found' in caldav_event:
-                    print(f'{uid} => {caldav_event}')
                     continue
 
                 caldav_event = cut_valarm(caldav_event)
-                caldav_event = rebuild_org_attendees_to_description_2(caldav_event)
+                caldav_event = cut_org_attendees_to_description(caldav_event)
 
-                result = self.y_caldav_service.create_event(caldav_event, uid)
-
-                print(f'{uid} => {result.status_code}')
-
+                result = self.y_caldav_service.create_event(caldav_event, _)
+                self.Logger.write([self.user_email, _, result.status_code], 'GY_PUT_EVENTS')
             except Exception as e:
-                print(f'ERROR, {uid} {e}')
+                self.Logger.write([self.user_email, _, e], 'GY_PUT_EVENTS_ERROR')
                 continue
 
     def sync_yandex_events_to_google(self) -> None:
 
-        for uid in self.y_caldav_service.period_events_list:
+        for _ in self.y_caldav_service.period_events_list:
             try:
-                if 'google.com' in uid:
+                if 'google.com' in _:
                     continue
 
-                print(uid)
-                caldav_event = self.y_caldav_service.get_event_by_uid(uid)
+                caldav_event = self.y_caldav_service.get_event_by_uid(_)
 
                 if '<title>Error 404 Not Found</title>' in caldav_event:
-                    print(f'{uid} => <title>Error 404 Not Found</title>')
                     continue
 
                 caldav_event = cut_valarm(caldav_event)
-                caldav_event = rebuild_org_attendees_to_description_2(caldav_event)
+                caldav_event = cut_org_attendees_to_description(caldav_event)
 
-                result = self.g_caldav_service.create_event(caldav_event, uid)
-                print(f'{uid} => {result.status_code}')
+                result = self.g_caldav_service.create_event(caldav_event, _)
+                self.Logger.write([self.user_email, _, result.status_code], 'YG_PUT_EVENTS')
             except Exception as e:
-                print(f'ERROR, {uid} {e}')
+                self.Logger.write([self.user_email, _, e], 'YG_PUT_EVENTS_ERROR')
                 continue
-
-    def sync_others(self):...
 
     def sync_deleted_G_from_Y(self):
         for _ in self.y_caldav_service.period_events_list:
@@ -74,9 +66,8 @@ class Synchronizer:
                 continue
             result = list(filter(lambda x: x in _, self.g_caldav_service.events_uids_list))
             if not result:
-                print(f'Delete google from yandex {_}')
                 result = self.y_caldav_service.delete_event_by_uid(f'{_}')
-                print(f'{_} => {result.status_code}')
+                self.Logger.write([self.user_email, _, result.status_code], 'GY_DELETE_EVENTS')
 
     def sync_deleted_Y_from_G(self):
         for _ in self.g_caldav_service.period_events_list:
@@ -84,44 +75,40 @@ class Synchronizer:
                 continue
             result = list(filter(lambda x: x in _, self.y_caldav_service.events_uids_list))
             if not result:
-                print(f'Delete google from yandex {_}')
                 result = self.g_caldav_service.delete_event_by_uid(_)
-                print(f'{_} => {result.status_code}')
+                self.Logger.write([self.user_email, _, result.status_code], 'YG_DELETE_EVENTS')
 
-    def check_if_g_broken(self, uid):
-        caldav_text = self.y_caldav_service.get_event_by_uid(uid)
-        cd_helper = CaldavHelper(caldav_text)
+    def delete_y_events_not_pik_syncer_others_period(self):
+        for _ in self.g_caldav_service.period_events_list:
+            if 'yandex.ru' not in _:
+                continue
 
-        organizer = cd_helper.get_organizer()
-        if organizer and self.user_email not in organizer:
-            print(f'{self.user_email} <> {organizer}')
-            return True
+            if 'PIK_SYNCER' in _:
+                continue
 
-        attendees = cd_helper.get_attendees()
-        if attendees:
-            return True
+            caldav_text = self.g_caldav_service.get_event_by_uid(_)
+            cd_helper = CaldavHelper(caldav_text)
 
-        return False
+            organizer = cd_helper.get_org_from_main_body()
+            if self.user_email not in organizer:
+                result = self.g_caldav_service.delete_event_by_uid(_)
+                self.Logger.write([self.user_email, _, result.status_code], 'G_DELETE_Y_EVENTS')
 
-    def check_if_y_broken(self):...
+    def delete_g_events_not_pik_syncer_others_period(self):
+        for _ in self.y_caldav_service.period_events_list:
+            if 'google.com' not in _:
+                continue
 
-    def recreate_broken(self, uid):
-        new_uid = f'{uid}_PIK_SYNCER'
-        self.y_caldav_service.create_event(new_uid)
+            if 'PIK_SYNCER' in _:
+                continue
 
-    def check_if_in_broken_list(self, uid=None, broken_list=[]):
-        if uid is None:
-            return False
+            caldav_text = self.y_caldav_service.get_event_by_uid(_)
+            cd_helper = CaldavHelper(caldav_text)
 
-        if not broken_list:
-            return False
-
-        for i in broken_list:
-            if uid in i:
-                return True
-
-        return False
-
+            organizer = cd_helper.get_org_from_main_body()
+            if self.user_email not in organizer:
+                result = self.y_caldav_service.delete_event_by_uid(_)
+                self.Logger.write([self.user_email, _, result.status_code], 'Y_DELETE_G_EVENTS')
 
 # ====================================================================== HELPERS
 
@@ -134,7 +121,7 @@ def cut_valarm(text) -> str:
     return text
 
 
-def rebuild_org_attendees_to_description_2(text) -> str:
+def cut_org_attendees_to_description(text) -> str:
 
     cal = icalendar.Calendar.from_ical(text)
 
@@ -149,10 +136,11 @@ def rebuild_org_attendees_to_description_2(text) -> str:
 
         attendees = event.get('attendee')
 
-        if attendees:
+        if isinstance(attendees, list):
             for attendee in attendees:
-                attendee_email = attendee.replace('mailto:', '')
                 attendee_status = attendee.params.get('PARTSTAT')
+                attendee_email = attendee.replace('mailto:', '')
+
                 # status = '❔'
                 #
                 # if 'ACCEPTED' in attendee_status:
@@ -160,6 +148,11 @@ def rebuild_org_attendees_to_description_2(text) -> str:
                 # if 'DECLINED' in attendee_status:
                 #     status = '❌'
                 append_description += f'{attendee_email} {attendee_status}\n'
+
+        elif isinstance(attendees, str):
+            attendee_status = attendees.params.get('PARTSTAT')
+            attendee_email = attendees.replace('mailto:', '')
+            append_description += f'{attendee_email} {attendee_status}\n'
 
         event.pop('ORGANIZER', None)
         event.pop('ATTENDEE', None)
@@ -178,10 +171,8 @@ def rebuild_org_attendees_to_description_2(text) -> str:
 
 
 def write_to_txt(text: str) -> None:
-
     if isinstance(text, bytes):
         text = text.decode('utf-8')
-
     f = open('caldav.txt', 'a', newline='', encoding="cp1251")
     f.write('\n==================================================================\n\n')
     f.write(text)
@@ -189,27 +180,12 @@ def write_to_txt(text: str) -> None:
     f.close()
 
 
-def get_caldav_events_uids_list(text) -> str:
-    list = []
-    while 'UID:' in text:
-        start = text.find('UID:')
-        end = text.find('\n', start)
-        uid = text[start+4:end-1]
-        if uid not in list and 'google.com' in uid:
-            list.append(uid)
-        text = text[start+4:]
-    return list
-
-
 def get_users_list() -> list:
     users_list = []
     with open('users_list.csv') as f:
         for line in f:
-            # strip whitespace
             line = line.strip()
-            # separate the columns
             line = line.split(',')
-            # save the line for use later
             users_list.append(line)
 
     return users_list
@@ -221,10 +197,11 @@ def get_users_list() -> list:
 def start_syncing(users_list):
     for user in users_list:
         user_email = user[0]
+        print(user_email)
         print(f'Start SYNC for => {user_email}')
 
         syncer = Synchronizer(user_email)
-        syncer.Logger.writeEvent([syncer.get_time(), 'START', user_email], 'syncing_time')
+        syncer.Logger.write([syncer.get_time(), 'START', user_email], 'Sync_Execution')
 
         #====== SYNC G<=>Y ======
         syncer.sync_google_events_to_yandex()
@@ -234,16 +211,11 @@ def start_syncing(users_list):
         syncer.sync_deleted_G_from_Y()
         syncer.sync_deleted_Y_from_G()
 
-        # ====== ERASE OTHERS EVENTS G<=>Y ======  ??? DELETE ???
-        # syncer.y_caldav_service.delete_g_events_others_period()
-        # syncer.g_caldav_service.delete_y_events_others_period()
-
         # ====== ERASE NOT PIK_SYNCER OTHERS EVENTS G<=>Y ======
-        syncer.y_caldav_service.delete_g_events_not_pik_syncer_others_period()
-        syncer.g_caldav_service.delete_y_events_not_pik_syncer_others_period()
+        syncer.delete_g_events_not_pik_syncer_others_period()
+        syncer.delete_y_events_not_pik_syncer_others_period()
 
-        syncer.timer()
-        syncer.Logger.writeEvent([syncer.get_time(), 'END', user_email], 'syncing_time')
+        syncer.Logger.write([syncer.get_time(), 'END', user_email], 'Sync_Execution')
 
         print(f'End SYNC for => {user_email}')
 
