@@ -12,4 +12,4 @@ RUN pip install -r requirements.txt
 ENV TZ Europe/Moscow
 
 # Опционально - указываем команду для запуска вашего скрипта
-CMD ["python", "main.py"]
+CMD ["python", "sync_scheduler.py"]

@@ -241,10 +241,25 @@ def sync_user_cal(user_email: str) -> None:
     print(f'End SYNC for => {user_email}')
 
 
-def start_syncing(users_list: list) -> None:
+def start_syncing() -> None:
+    print('Start syncing!\n\n')
+    return
     users_list = get_users_list()
     for user in users_list:
         user_email = user[0]
+        try:
+            sync_user_cal(user_email)
+        except Exception as e:
+            print(e)
+            log = Logger(user_email, datetime.datetime.now().strftime('%H%M%SZ'))
+            log.write([user_email, datetime.datetime.now().strftime('%Y%m%dT%H%M%SZ'), e], 'Sync_Execution_ERROR')
+
+
+def process_sync_execution_errors() -> None:
+    print('Process errors!\n\n')
+    return
+    users_list = get_users_from_errors_list()
+    for user_email in users_list:
         try:
             sync_user_cal(user_email)
         except Exception as e:
