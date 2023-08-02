@@ -2,7 +2,9 @@ import icalendar
 import concurrent.futures
 import datetime
 import math
+import os
 
+import config
 from GCalDav import GoogleCalDav
 from YCalDav import YandexCalDav
 from logEvents import Logger
@@ -21,7 +23,7 @@ class Synchronizer:
     def sync_google_events_to_yandex(self) -> None:
         for _ in self.g_caldav_service.period_events_list:
             try:
-                if 'yandex.ru' in _ and 'google.com' not in _:
+                if 'yandex.ru' in _ or 'google.com' not in _:
                     continue
 
                 caldav_event = self.g_caldav_service.get_event_by_uid(_)
@@ -42,7 +44,7 @@ class Synchronizer:
 
         for _ in self.y_caldav_service.period_events_list:
             try:
-                if 'google.com' in _ and 'yandex.ru' not in _:
+                if 'google.com' in _ or 'yandex.ru' not in _:
                     continue
 
                 caldav_event = self.y_caldav_service.get_event_by_uid(_)
@@ -200,37 +202,57 @@ def get_users_list() -> list:
     return users_list
 
 
+def get_users_from_errors_list() -> list:
+    arr = []
+    path = f'logEvents/{config.global_date()}/Sync_Execution_ERROR.csv'
+    with open(path) as f:
+        rows = map(lambda x: x.split(','), f.readlines())
+        if rows:
+            [arr.append(x[1]) for x in rows if x[1] not in arr]
+    os.remove(path)
+    return arr
+
+
 # ====================================================================== START
+
+
+def sync_user_cal(user_email):
+    print(user_email)
+    print(f'Start SYNC for => {user_email}')
+
+    syncer = Synchronizer(user_email)
+    syncer.Logger.write([syncer.get_time(), 'START', user_email], 'Sync_Execution')
+
+    # ====== SYNC G<=>Y ======
+    syncer.sync_google_events_to_yandex()
+    syncer.sync_yandex_events_to_google()
+
+    # ====== CLEAN DELETED G<=>Y ======
+    syncer.sync_deleted_G_from_Y()
+    syncer.sync_deleted_Y_from_G()
+
+    # ====== ERASE NOT PIK_SYNCER OTHERS EVENTS G<=>Y ======
+    syncer.delete_g_events_not_pik_syncer_others_period()
+    syncer.delete_y_events_not_pik_syncer_others_period()
+
+    # # ====== ERASE PIK_SYNCER EVENTS G<=>Y ======
+    # syncer.delete_g_pik_syncer_events()
+    # syncer.delete_y_pik_syncer_events()
+
+    syncer.Logger.write([syncer.get_time(), 'END', user_email], 'Sync_Execution')
+
+    print(f'End SYNC for => {user_email}')
 
 
 def start_syncing(users_list):
     for user in users_list:
         user_email = user[0]
-        print(user_email)
-        print(f'Start SYNC for => {user_email}')
-
-        syncer = Synchronizer(user_email)
-        syncer.Logger.write([syncer.get_time(), 'START', user_email], 'Sync_Execution')
-
-        #====== SYNC G<=>Y ======
-        syncer.sync_google_events_to_yandex()
-        syncer.sync_yandex_events_to_google()
-
-        # ====== CLEAN DELETED G<=>Y ======
-        syncer.sync_deleted_G_from_Y()
-        syncer.sync_deleted_Y_from_G()
-
-        # ====== ERASE NOT PIK_SYNCER OTHERS EVENTS G<=>Y ======
-        syncer.delete_g_events_not_pik_syncer_others_period()
-        syncer.delete_y_events_not_pik_syncer_others_period()
-
-        # # ====== ERASE PIK_SYNCER EVENTS G<=>Y ======
-        # syncer.delete_g_pik_syncer_events()
-        # syncer.delete_y_pik_syncer_events()
-
-        syncer.Logger.write([syncer.get_time(), 'END', user_email], 'Sync_Execution')
-
-        print(f'End SYNC for => {user_email}')
+        try:
+            sync_user_cal(user_email)
+        except Exception as e:
+            print(e)
+            log = Logger(user_email, datetime.datetime.now().strftime('%H%M%SZ'))
+            log.write([user_email, datetime.datetime.now().strftime('%Y%m%dT%H%M%SZ'), e], 'Sync_Execution_ERROR')
 
 
 def separate_processes():
@@ -249,6 +271,7 @@ def separate_processes():
 
         if len(users_batch) > 0:
             executor.submit(start_syncing, users_batch)
+
 
 if __name__ == "__main__":
     separate_processes()
