@@ -10,9 +10,13 @@ from YCalDav import YandexCalDav
 from logEvents import Logger
 from caldav_helper import CaldavHelper
 
+
+THREADS = 10
+
+
 class Synchronizer:
-    def __init__(self, user_email):
-        self.user_email = user_email
+    def __init__(self, user_email: str):
+        self.user_email: str = user_email
         self.g_caldav_service = GoogleCalDav(user_email)
         self.y_caldav_service = YandexCalDav(user_email)
         self.Logger = Logger(user_email, datetime.datetime.now().strftime("%H:%M:%S"))
@@ -35,13 +39,12 @@ class Synchronizer:
                 caldav_event = cut_org_attendees_to_description(caldav_event)
 
                 result = self.y_caldav_service.create_event(caldav_event, _)
-                self.Logger.write([self.user_email, _, result.status_code], 'GY_PUT_EVENTS')
+                self.Logger.write([self.user_email, _, result.status_code], 'G_PUT_Y_EVENTS')
             except Exception as e:
-                self.Logger.write([self.user_email, _, e], 'GY_PUT_EVENTS_ERROR')
+                self.Logger.write([self.user_email, _, e], 'G_PUT_Y_EVENTS_ERROR')
                 continue
 
     def sync_yandex_events_to_google(self) -> None:
-
         for _ in self.y_caldav_service.period_events_list:
             try:
                 if 'google.com' in _ or 'yandex.ru' not in _:
@@ -56,9 +59,9 @@ class Synchronizer:
                 caldav_event = cut_org_attendees_to_description(caldav_event)
 
                 result = self.g_caldav_service.create_event(caldav_event, _)
-                self.Logger.write([self.user_email, _, result.status_code], 'YG_PUT_EVENTS')
+                self.Logger.write([self.user_email, _, result.status_code], 'Y_PUT_G_EVENTS')
             except Exception as e:
-                self.Logger.write([self.user_email, _, e], 'YG_PUT_EVENTS_ERROR')
+                self.Logger.write([self.user_email, _, e], 'Y_PUT_G_EVENTS_ERROR')
                 continue
 
     def sync_deleted_G_from_Y(self):
@@ -83,13 +86,10 @@ class Synchronizer:
         for _ in self.g_caldav_service.period_events_list:
             if 'yandex.ru' not in _:
                 continue
-
             if 'PIK_SYNCER' in _:
                 continue
-
             caldav_text = self.g_caldav_service.get_event_by_uid(_)
             cd_helper = CaldavHelper(caldav_text)
-
             organizer = cd_helper.get_org_from_main_body()
             if self.user_email not in organizer:
                 result = self.g_caldav_service.delete_event_by_uid(_)
@@ -99,13 +99,10 @@ class Synchronizer:
         for _ in self.y_caldav_service.period_events_list:
             if 'google.com' not in _:
                 continue
-
             if 'PIK_SYNCER' in _:
                 continue
-
             caldav_text = self.y_caldav_service.get_event_by_uid(_)
             cd_helper = CaldavHelper(caldav_text)
-
             organizer = cd_helper.get_org_from_main_body()
             if self.user_email not in organizer:
                 result = self.y_caldav_service.delete_event_by_uid(_)
@@ -121,10 +118,11 @@ class Synchronizer:
             if 'PIK_SYNCER' in _:
                 self.y_caldav_service.delete_event_by_uid(_)
 
+
 # ====================================================================== HELPERS
 
 
-def cut_valarm(text) -> str:
+def cut_valarm(text: str) -> str:
     while 'BEGIN:VALARM' in text:
         start = text.find('BEGIN:VALARM')
         end = text.find('END:VALARM', start)
@@ -132,7 +130,7 @@ def cut_valarm(text) -> str:
     return text
 
 
-def cut_org_attendees_to_description(text) -> str:
+def cut_org_attendees_to_description(text: str) -> str:
 
     cal = icalendar.Calendar.from_ical(text)
 
@@ -216,8 +214,7 @@ def get_users_from_errors_list() -> list:
 # ====================================================================== START
 
 
-def sync_user_cal(user_email):
-    print(user_email)
+def sync_user_cal(user_email: str) -> None:
     print(f'Start SYNC for => {user_email}')
 
     syncer = Synchronizer(user_email)
@@ -244,7 +241,8 @@ def sync_user_cal(user_email):
     print(f'End SYNC for => {user_email}')
 
 
-def start_syncing(users_list):
+def start_syncing(users_list: list) -> None:
+    users_list = get_users_list()
     for user in users_list:
         user_email = user[0]
         try:
@@ -253,25 +251,3 @@ def start_syncing(users_list):
             print(e)
             log = Logger(user_email, datetime.datetime.now().strftime('%H%M%SZ'))
             log.write([user_email, datetime.datetime.now().strftime('%Y%m%dT%H%M%SZ'), e], 'Sync_Execution_ERROR')
-
-
-def separate_processes():
-    all_users_list = get_users_list()
-    print(f'Users list len => {len(all_users_list)}')
-    threads = 10
-    users_batch_limit = math.ceil(len(all_users_list)/threads)
-    users_batch = []
-
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        for user in all_users_list:
-            users_batch.append(user)
-            if len(users_batch) == users_batch_limit:
-                executor.submit(start_syncing, users_batch)
-                users_batch = []
-
-        if len(users_batch) > 0:
-            executor.submit(start_syncing, users_batch)
-
-
-if __name__ == "__main__":
-    separate_processes()

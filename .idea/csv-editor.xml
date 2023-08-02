@@ -24,6 +24,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\logEvents\20230802\Sync_Execution_ERROR.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value="," />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\logEvents\20230802\YG_PUT_EVENTS.csv">
           <value>
             <Attribute>
