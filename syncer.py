@@ -242,8 +242,6 @@ def sync_user_cal(user_email: str) -> None:
 
 
 def start_syncing() -> None:
-    print('Start syncing!\n\n')
-    return
     users_list = get_users_list()
     for user in users_list:
         user_email = user[0]
@@ -256,8 +254,6 @@ def start_syncing() -> None:
 
 
 def process_sync_execution_errors() -> None:
-    print('Process errors!\n\n')
-    return
     users_list = get_users_from_errors_list()
     for user_email in users_list:
         try:
