@@ -1,3 +1,6 @@
+import asyncio
+
+
 class CaldavHelper:
     def __init__(self, caldav_text):
         self.caldav_text = caldav_text
@@ -12,60 +15,60 @@ class CaldavHelper:
         self.dtstart = ''
         self.dtend = ''
 
-    def check_for_byte_str(self):
+    async def check_for_byte_str(self) -> None:
         if isinstance(self.caldav_text, bytes):
             self.caldav_text = self.caldav_text.decode('utf-8')
 
-    def get_summary(self, caldav_text=None) -> str:
+    async def get_summary(self, caldav_text=None) -> str:
         if caldav_text is None:
-            caldav_text =self.caldav_text
+            caldav_text = self.caldav_text
         start = caldav_text.find('SUMMARY')
         end = caldav_text.find('\n', start)
-        return self.caldav_text[start:end]
+        return await self.caldav_text[start:end]
 
-    def get_starttime(self) -> str:
+    async def get_starttime(self) -> str:
         start = self.caldav_text.find('DTSTART')
         end = self.caldav_text.find('\n', start)
         text = self.caldav_text[start:end]
-        return text
+        return await text
 
-    def get_endtime(self) -> str:
+    async def get_endtime(self) -> str:
         start = self.caldav_text.find('DTEND')
         end = self.caldav_text.find('\n', start)
         text = self.caldav_text[start:end]
-        return text
+        return await text
 
-    def get_main_body(self) -> str:
+    async def get_main_body(self) -> str:
         start = self.caldav_text.find('BEGIN:VEVENT')
         end = self.caldav_text.find('END:VEVENT', start)
         self.main_body = self.caldav_text[start:end+10]
 
-    def get_org_from_main_body(self):
+    async def get_org_from_main_body(self):
         start = self.caldav_text.find('ORGANIZER')
         end = self.caldav_text.find('\n', start)
-        return self.caldav_text[start:end]
+        return await self.caldav_text[start:end]
 
-    def get_organizer(self, caldav_text=None):
+    async def get_organizer(self, caldav_text=None):
         if caldav_text is None:
             caldav_text = self.caldav_text
         start = caldav_text.find('ORGANIZER')
         end = caldav_text.find('\n', start)
         organizer = caldav_text[start:end]
         self.organizer = organizer
-        return organizer
+        return await organizer
 
-    def is_reccurences(self):
+    async def is_reccurences(self):
         if 'RECURRENCE-ID' in self.caldav_text:
             return True
         else:
             return False
 
-    def get_rrule(self):
+    async def get_rrule(self):
         start = self.caldav_text.find('RRULE')
         end = self.caldav_text.find('\n', start)
-        return self.caldav_text[start:end]
+        return await self.caldav_text[start:end]
 
-    def get_attendees(self, vevent=None):
+    async def get_attendees(self, vevent=None):
         if vevent is None:
             vevent = self.main_body
 

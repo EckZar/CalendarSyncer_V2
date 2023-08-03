@@ -38,6 +38,13 @@
             </Attribute>
           </value>
         </entry>
+        <entry key="\logEvents\20230803\Sync_Execution.csv">
+          <value>
+            <Attribute>
+              <option name="separator" value=":" />
+            </Attribute>
+          </value>
+        </entry>
         <entry key="\users_list.csv">
           <value>
             <Attribute>

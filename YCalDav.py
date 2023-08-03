@@ -1,15 +1,22 @@
+import aiohttp
+import asyncio
 import requests
 import yAuth
 import datetime
 import xml.etree.ElementTree as ET
-from config import global_date
 from caldav_helper import CaldavHelper
+from AsyncHTTPRequester import AsyncHttpRequester
+
 
 DELTA_TO = 3
 DELTA_FROM = 0
 
+
 class YandexCalDav:
     def __init__(self, user_email):
+        self.asyncer = AsyncHttpRequester()
+        self.service_from = 'yandex.ru'
+        self.service_to = 'google.com'
         self.user_email: str = user_email
         self.headers: dict = {
             'Authorization': f'OAuth {yAuth.get_access_token(user_email)}'
@@ -154,3 +161,4 @@ class YandexCalDav:
             print('\n<==========================>\n')
 
     def delete_g_synced_google_events(self):...
+

@@ -2,6 +2,7 @@ import schedule
 import time
 import concurrent.futures
 from _datetime import datetime
+import asyncio
 
 import syncer
 
@@ -29,4 +30,6 @@ schedule.every(5).minutes.do(run_pe)
 
 
 if __name__ == "__main__":
-    start()
+    # start()
+
+    asyncio.run(syncer.start_syncing())
