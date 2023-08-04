@@ -7,8 +7,8 @@ from caldav_helper import CaldavHelper
 from gAuth import get_access_token
 from AsyncHTTPRequester import AsyncHttpRequester
 
-DELTA_TO = 4
-DELTA_FROM = 2
+DELTA_TO = 3
+DELTA_FROM = 1
 
 
 class GoogleCalDav:
@@ -20,26 +20,26 @@ class GoogleCalDav:
         self.base_url: str = 'https://apidata.googleusercontent.com'
         self.events_uids_list: list = []
         self.period_events_list: list = []
-        self.events_list_broken: list = []
         self.headers = {
             'Authorization': f'Bearer {get_access_token(user_email)}'
         }
-        asyncio.ensure_future(self.get_all_events())
-        asyncio.ensure_future(self.get_events_from_to_dates())
 
-    async def get_events_uids_list(self):
-        return self.events_uids_list
 
     async def get_event_by_uid(self, uid: str) -> str:
+        await self.asyncer.create_session()
         url = f"{self.base_url}/caldav/v2/{self.user_email}/events/{uid}.ics"
-        # return requests.request("GET", url, headers=self.headers).text
-        return await self.asyncer.make_request(
+
+        response = await self.asyncer.make_request(
             url=url,
             method='GET',
             headers=self.headers
         )
+        await self.asyncer.close_session()
+        return response
 
     async def get_events_from_to_dates(self, date_from=None, date_to=None) -> None:
+
+
         if date_from is None:
             now = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
             date_from = (now + datetime.timedelta(days=DELTA_FROM)).strftime('%Y%m%dT%H%M%SZ')
@@ -48,7 +48,7 @@ class GoogleCalDav:
 
         time_range = f"<C:time-range start=\"{date_from}\" " \
                      f"              end=\"{date_to}\"/>"
-        print(time_range)
+
         payload = "<?xml version=\"1.0\" encoding=\"utf-8\" ?>\r\n" \
                   "<C:calendar-query xmlns:D=\"DAV:\"\r\n" \
                                     "xmlns:C=\"urn:ietf:params:xml:ns:caldav\">\r\n\r\n\r\n" \
@@ -63,24 +63,22 @@ class GoogleCalDav:
 
         url = f"{self.base_url}/caldav/v2/{self.user_email}/events"
 
-        try:
-            # response = requests.request("REPORT", url, headers=self.headers, data=payload)
-            response = await self.asyncer.make_request(
-                url=url,
-                method='REPORT',
-                headers=self.headers,
-                data=payload
-            )
-        except Exception as e:
-            print(e)
-        tree = ET.fromstring(response.content)
+
+        await self.asyncer.create_session()
+        response = await self.asyncer.make_request(
+            url=url,
+            method='REPORT',
+            headers=self.headers,
+            data=payload
+        )
+        await self.asyncer.close_session()
+
+        tree = ET.fromstring(response)
 
         for href_element in tree.iter("{DAV:}href"):
             href = href_element.text.replace('%40', '@')
             if href not in self.period_events_list:
                 uid = href.split('/')[-1].replace('.ics', '')
-                if 'PIK_SYNCER' in uid:
-                    self.events_list_broken.append(uid)
                 self.period_events_list.append(uid)
 
     async def get_all_events(self) -> None:
@@ -99,53 +97,55 @@ class GoogleCalDav:
                   "</C:filter>\r\n" \
                   "</C:calendar-query>"
 
-        # response = requests.request("REPORT", url, headers=self.headers, data=payload)
+        await self.asyncer.create_session()
         response = await self.asyncer.make_request(
             url=url,
             method='REPORT',
             headers=self.headers,
             data=payload
         )
+        await self.asyncer.close_session()
 
-        tree = ET.fromstring(response.content)
+        tree = ET.fromstring(response)
 
         for href_element in tree.iter("{DAV:}href"):
-            href = href_element.text#.replace('%40', '@')
+            href = href_element.text
             if href and href not in self.events_uids_list:
                 uid = href.split('/')[-1].replace('.ics', '')
-                if 'PIK_SYNCER' in uid:
-                    self.events_list_broken.append(uid)
                 self.events_uids_list.append(uid)
 
     async def create_event(self, payload, uid):
+        await self.asyncer.create_session()
         url = f"{self.base_url}/caldav/v2/{self.user_email}/events/{uid}_PIK_SYNCER.ics"
         self.headers['Content-Type'] = 'text/calendar'
-        # return requests.request("PUT", url, headers=self.headers, data=payload)
-        return await self.asyncer.make_request(
+        response = await self.asyncer.make_request(
             url=url,
             method='PUT',
             headers=self.headers,
             data=payload
         )
+        await self.asyncer.close_session()
+        return response
+
     async def delete_event_by_uid(self, uid):
+        await self.asyncer.create_session()
         url = f"{self.base_url}/caldav/v2/{self.user_email}/events/{uid}.ics"
-        # return requests.request("DELETE", url, headers=self.headers)
-        return await self.asyncer.make_request(
+        response = await self.asyncer.make_request(
             url=url,
             method='DELETE',
             headers=self.headers
         )
+        await self.asyncer.close_session()
+        return response
 
     async def delete_y_events_others_period(self):
         for uid in self.period_events_list:
             if 'yandex.ru' not in uid:
                 continue
 
-            #Begin
             caldav_text = self.get_event_by_uid(uid)
             cd_helper = CaldavHelper(caldav_text)
 
-            #Events properties
             summary = cd_helper.get_summary()
             organizer = cd_helper.get_org_from_main_body()
 

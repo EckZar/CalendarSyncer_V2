@@ -1,4 +1,6 @@
 import icalendar
+import asyncio
+import aiohttp
 from datetime import datetime
 
 from GCalDav import GoogleCalDav
@@ -16,48 +18,55 @@ class Synchronizer:
         self.TIME = datetime.now().strftime("%H:%M:%S")
         self.Logger = Logger(user_email, self.TIME)
 
-    def sync_events(self, cal_service) -> None:
-        for _ in cal_service.period_events_list:
+    async def sync_events(self, cal_service_from, cal_service_to) -> None:
+        for _ in cal_service_from.period_events_list:
             try:
-                if cal_service.service_to in _ or cal_service.service_from not in _:
+                if cal_service_from.service_to in _ or cal_service_from.service_from not in _:
                     continue
-                caldav_event = cal_service.get_event_by_uid(_)
+
+                caldav_event = await cal_service_from.get_event_by_uid(_)
+
                 if 'No events found' in caldav_event or '<title>Error 404 Not Found</title>' in caldav_event:
                     continue
+
                 caldav_event = cut_valarm(caldav_event)
                 caldav_event = cut_org_attendees_to_description(caldav_event)
-                result = cal_service.create_event(caldav_event, _)
-                self.Logger.write([self.user_email, _, result.status_code], f'{cal_service.service_from}_PUT_{cal_service.service_to}_EVENTS')
+                result = await cal_service_to.create_event(caldav_event, _)
+                await self.Logger.write([self.user_email, _, result.status_code],
+                                        f'{cal_service_from.service_from}_PUT_{cal_service_to.service_to}_EVENTS')
             except Exception as e:
-                self.Logger.write([self.user_email, _, e], f'{cal_service.service_from}_PUT_{cal_service.service_to}_EVENTS_ERROR')
+                await self.Logger.write([self.user_email, _, e],
+                                        f'{cal_service_from.service_from}_PUT_{cal_service_to.service_to}_EVENTS_ERROR')
                 continue
 
-    def sync_deleted(self, cal_service):
-        for _ in cal_service.period_events_list:
-            if cal_service.event_from not in _:
+    async def sync_deleted(self, cal_service_from, cal_service_to):
+        for _ in cal_service_from.period_events_list:
+            if cal_service_from.event_from not in _:
                 continue
-            result = list(filter(lambda x: x in _, self.g_caldav_service.events_uids_list))
+            result = list(filter(lambda x: x in _, cal_service_to.events_uids_list))
             if not result:
-                result = cal_service.delete_event_by_uid(_)
-                self.Logger.write([self.user_email, _, result.status_code], f'{cal_service.service_from}_DELETE_{cal_service.service_to}_EVENTS')
+                result = await cal_service_to.delete_event_by_uid(_)
+                await self.Logger.write([self.user_email, _, result.status_code],
+                                        f'{cal_service_to.service_from}_DELETE_{cal_service_to.service_to}_EVENTS')
 
-    async def delete_events_not_pik_syncer_others_period(self, cal_service):
+    async def delete_events_not_pik_syncer_others_period(self, cal_service_from, cal_service_to):
         for _ in cal_service.period_events_list:
             if cal_service.event_from not in _:
                 continue
             if 'PIK_SYNCER' in _:
                 continue
-            caldav_text = cal_service.get_event_by_uid(_)
+            caldav_text = await cal_service.get_event_by_uid(_)
             cd_helper = CaldavHelper(caldav_text)
             organizer = cd_helper.get_org_from_main_body()
             if self.user_email not in organizer:
-                result = cal_service.delete_event_by_uid(_)
-                self.Logger.write([self.user_email, _, result.status_code], f'{cal_service.service_from}_DELETE_{cal_service.service_to}_EVENTS')
+                result = await cal_service.delete_event_by_uid(_)
+                await self.Logger.write([self.user_email, _, result.status_code],
+                                        f'{cal_service.service_from}_DELETE_{cal_service.service_to}_EVENTS')
 
-    def delete_pik_syncer_events(self, cal_service):
+    async def delete_pik_syncer_events(self, cal_service_from, cal_service_to):
         for _ in cal_service.period_events_list:
             if 'PIK_SYNCER' in _:
-                cal_service.delete_event_by_uid(_)
+                await cal_service.delete_event_by_uid(_)
 
 
 # ====================================================================== HELPERS
@@ -67,7 +76,7 @@ def cut_valarm(text: str) -> str:
     while 'BEGIN:VALARM' in text:
         start = text.find('BEGIN:VALARM')
         end = text.find('END:VALARM', start)
-        text = text[:start] + text[end+12:]
+        text = text[:start] + text[end + 12:]
     return text
 
 
@@ -146,13 +155,26 @@ async def sync_user_cal(user_email: str) -> None:
     print(f'Start SYNC for => {user_email}')
 
     syncer = Synchronizer(user_email)
-    syncer.Logger.write([syncer.TIME, 'START', user_email], 'Sync_Execution')
+
+    await syncer.Logger.write([syncer.TIME, 'START', user_email], 'Sync_Execution')
+
+    await syncer.g_caldav_service.get_events_from_to_dates()
+    await syncer.g_caldav_service.get_all_events()
+
+    await syncer.y_caldav_service.get_main_calendar()
+
+    await syncer.y_caldav_service.get_events_from_to_dates()
+    await syncer.y_caldav_service.get_all_events()
+    await syncer.y_caldav_service.get_calendars()
 
     # ====== SYNC G<=>Y ======
-    syncer.sync_events(syncer.g_caldav_service)
-    # syncer.sync_events(syncer.y_caldav_service)
+    await syncer.sync_events(syncer.g_caldav_service, syncer.y_caldav_service)
+    await syncer.sync_events(syncer.y_caldav_service, syncer.g_caldav_service)
 
-    # # ====== CLEAN DELETED G<=>Y ======
+    # ====== CLEAN DELETED G<=>Y ======
+
+
+
     # syncer.sync_deleted(syncer.g_caldav_service)
     # syncer.sync_deleted(syncer.y_caldav_service)
     #
@@ -164,20 +186,23 @@ async def sync_user_cal(user_email: str) -> None:
     # syncer.delete_pik_syncer_events(syncer.g_caldav_service)
     # syncer.delete_pik_syncer_events(syncer.y_caldav_service)
 
-    await syncer.g_caldav_service.asyncer.close()
-    # await syncer.y_caldav_service.asyncer.close()
+    # await syncer.requester.close_session()
 
-    syncer.Logger.write([syncer.TIME, 'END', user_email], 'Sync_Execution')
+
+    await syncer.Logger.write([syncer.TIME, 'END', user_email], 'Sync_Execution')
     print(f'End SYNC for => {user_email}')
 
 
-async def start_syncing() -> None:
+def start_syncing() -> None:
     users_list = get_users_list()
     for user in users_list:
         user_email = user[0]
-        try:
-            await sync_user_cal(user_email)
-        except Exception as e:
-            print(e)
-            log = Logger(user_email, datetime.now().strftime('%H%M%SZ'))
-            log.write([user_email, datetime.now().strftime('%Y%m%dT%H%M%SZ'), e], 'Sync_Execution_ERROR')
+        # try:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(sync_user_cal(user_email))
+        loop.close()
+        # await sync_user_cal(user_email)
+        # except Exception as e:
+        #     print(e)
+        #     log = Logger(user_email, datetime.now().strftime('%H%M%SZ'))
+        #     log.write([user_email, datetime.now().strftime('%Y%m%dT%H%M%SZ'), e], 'Sync_Execution_ERROR')

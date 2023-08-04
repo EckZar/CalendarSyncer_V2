@@ -4,12 +4,12 @@ import requests
 import yAuth
 import datetime
 import xml.etree.ElementTree as ET
+
 from caldav_helper import CaldavHelper
 from AsyncHTTPRequester import AsyncHttpRequester
 
-
 DELTA_TO = 3
-DELTA_FROM = 0
+DELTA_FROM = 1
 
 
 class YandexCalDav:
@@ -23,18 +23,26 @@ class YandexCalDav:
         }
         self.base_url: str = f'https://caldav.yandex.ru'
         self.calendars: list = []
-        self.main_calendar: str = self.get_main_calendar()
+        self.main_calendar: str = ''
         self.events_uids_list: list = []
         self.period_events_list: list = []
         self.events_list_others: list = []
-        self.events_list_broken: list = []
-        self.get_calendars()
-        self.get_all_events()
-        self.get_events_from_to_dates()
+        # self.get_calendars()
+        # self.get_all_events()
+        # self.get_events_from_to_dates()
 
-    def get_calendars(self):
-        respone = requests.request("GET", f'{self.base_url}/calendars/{self.user_email}', headers=self.headers)
-        content = respone.content
+    async def get_calendars(self):
+        await self.asyncer.create_session()
+        url = f'{self.base_url}/calendars/{self.user_email}'
+        # response = requests.request("GET", url, headers=self.headers)
+        # content = respone.content
+
+        content = await self.asyncer.make_request(
+            url=url,
+            method='GET',
+            headers=self.headers
+        )
+        await self.asyncer.close_session()
 
         if isinstance(content, (bytes, bytearray)):
             content = content.decode('utf-8')
@@ -46,25 +54,61 @@ class YandexCalDav:
                 continue
             self.calendars.append(_)
 
-    def get_main_calendar(self) -> None:
-        respone = requests.request("GET", f'{self.base_url}/calendars/{self.user_email}', headers=self.headers)
-        content = respone.content
+    async def get_main_calendar(self) -> None:
+        await self.asyncer.create_session()
+
+        url = f'{self.base_url}/calendars/{self.user_email}'
+        # respone = requests.request("GET", url, headers=self.headers)
+
+        response = await self.asyncer.make_request(
+            url=url,
+            method='GET',
+            headers=self.headers
+        )
+
+        await self.asyncer.close_session()
+
+        content = response
         if isinstance(content, (bytes, bytearray)):
             content = content.decode('utf-8')
 
         content = content.split('\n')
 
+        self.main_calendar = content[2]
+
         return content[2]
 
-    def get_caldav_events(self) -> str:
+    async def get_caldav_events(self) -> str:
+        await self.asyncer.create_session()
+
         url = f"{self.base_url}{self.main_calendar}{self.user_email}"
-        return requests.request("GET", url, headers=self.headers).text
+        # return requests.request("GET", url, headers=self.headers).text
 
-    def get_event_by_uid(self, uid: str) -> str:
+        response = await self.asyncer.make_request(
+            url=url,
+            method='GET',
+            headers=self.headers
+        )
+        await self.asyncer.close_session()
+
+        return response
+
+    async def get_event_by_uid(self, uid: str) -> str:
+        await self.asyncer.create_session()
+
         url = f"{self.base_url}{self.main_calendar}{uid}.ics"
-        return requests.request("GET", url, headers=self.headers).content.decode('utf-8')
+        # return requests.request("GET", url, headers=self.headers).content.decode('utf-8')
 
-    def get_events_from_to_dates(self, date_from=None, date_to=None) -> None:
+        response = await self.asyncer.make_request(
+            url=url,
+            method='GET',
+            headers=self.headers
+        )
+        await self.asyncer.close_session()
+
+        return response
+
+    async def get_events_from_to_dates(self, date_from=None, date_to=None) -> None:
 
         if date_from is None:
             now = datetime.datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
@@ -92,19 +136,24 @@ class YandexCalDav:
                   "</C:filter>\r\n\r\n" \
                   "</C:calendar-query>"
 
-        response = requests.request("REPORT", url, headers=self.headers, data=payload)
+        await self.asyncer.create_session()
+        response = await self.asyncer.make_request(
+            url=url,
+            method='REPORT',
+            headers=self.headers,
+            data=payload
+        )
+        await self.asyncer.close_session()
 
-        tree = ET.fromstring(response.content)
+        tree = ET.fromstring(response)
 
         for href_element in tree.iter("{DAV:}href"):
             href = href_element.text
             if href and href not in self.period_events_list:
                 uid = href.split('/')[-1].replace('.ics', '')
-                if 'PIK_SYNCER' in uid:
-                    self.events_list_broken.append(uid)
                 self.period_events_list.append(uid)
 
-    def get_all_events(self) -> None:
+    async def get_all_events(self) -> None:
 
         url = f"{self.base_url}{self.main_calendar}"
 
@@ -120,29 +169,60 @@ class YandexCalDav:
                   "</C:filter>\r\n" \
                   "</C:calendar-query>"
 
-        response = requests.request("REPORT", url, headers=self.headers, data=payload)
+        await self.asyncer.create_session()
+        response = await self.asyncer.make_request(
+            url=url,
+            method='REPORT',
+            headers=self.headers,
+            data=payload
+        )
+        await self.asyncer.close_session()
 
-        tree = ET.fromstring(response.content)
+        tree = ET.fromstring(response)
 
         for href_element in tree.iter("{DAV:}href"):
-            href = href_element.text#.replace('%40', '@')
+            href = href_element.text
             if href and href not in self.events_uids_list:
                 uid = href.split('/')[-1].replace('.ics', '')
-                if 'PIK_SYNCER' in uid:
-                    self.events_list_broken.append(uid)
                 self.events_uids_list.append(uid)
 
-    def create_event(self, payload, uid):
+    async def create_event(self, payload, uid):
+        await self.asyncer.create_session()
+
         headers = self.headers
         headers['Content-Type'] = 'text/calendar'
         url = f'{self.base_url}{self.main_calendar}{uid}_PIK_SYNCER.ics'
-        return requests.request("PUT", url, headers=self.headers, data=payload)
 
-    def delete_event_by_uid(self, uid):
+        # return requests.request("PUT", url, headers=self.headers, data=payload)
+
+        response = await self.asyncer.make_request(
+            url=url,
+            method='PUT',
+            headers=self.headers,
+            data=payload
+        )
+
+        await self.asyncer.close_session()
+
+        return response
+
+    async def delete_event_by_uid(self, uid):
+        await self.asyncer.create_session()
+
         url = f"{self.base_url}{self.main_calendar}{uid}.ics"
-        return requests.request("DELETE", url, headers=self.headers)
+        # return requests.request("DELETE", url, headers=self.headers)
 
-    def delete_g_events_others_period(self):
+        response = await self.asyncer.make_request(
+            url=url,
+            method='DELETE',
+            headers=self.headers
+        )
+
+        await self.asyncer.close_session()
+
+        return response
+
+    async def delete_g_events_others_period(self):
         for uid in self.period_events_list:
             if 'google.com' not in uid:
                 continue
@@ -159,6 +239,3 @@ class YandexCalDav:
                 self.delete_event_by_uid(uid)
                 print(f'Delete {summary}')
             print('\n<==========================>\n')
-
-    def delete_g_synced_google_events(self):...
-

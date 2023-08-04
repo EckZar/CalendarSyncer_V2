@@ -10,7 +10,6 @@ import syncer
 def start():
     while True:
         schedule.run_pending()
-        time.sleep(1)
 
 
 def run_syncer():
@@ -24,5 +23,5 @@ schedule.every(15).minutes.do(run_syncer)
 
 if __name__ == "__main__":
     # start()
-    loop = asyncio.new_event_loop()
-    loop.run_until_complete(syncer.start_syncing())
+
+    syncer.start_syncing()
