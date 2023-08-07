@@ -8,8 +8,8 @@ import xml.etree.ElementTree as ET
 from caldav_helper import CaldavHelper
 from AsyncHTTPRequester import AsyncHttpRequester
 
-DELTA_TO = 3
-DELTA_FROM = 1
+DELTA_TO = -2
+DELTA_FROM = -3
 
 
 class YandexCalDav:
@@ -27,25 +27,24 @@ class YandexCalDav:
         self.events_uids_list: list = []
         self.period_events_list: list = []
         self.events_list_others: list = []
-        # self.get_calendars()
-        # self.get_all_events()
-        # self.get_events_from_to_dates()
+        self.yandex_events: list = []
+        self.google_events: list = []
+        self.side_events: list = []
+
 
     async def get_calendars(self):
         await self.asyncer.create_session()
         url = f'{self.base_url}/calendars/{self.user_email}'
-        # response = requests.request("GET", url, headers=self.headers)
-        # content = respone.content
 
-        content = await self.asyncer.make_request(
+        response = await self.asyncer.make_request(
             url=url,
             method='GET',
             headers=self.headers
         )
         await self.asyncer.close_session()
 
-        if isinstance(content, (bytes, bytearray)):
-            content = content.decode('utf-8')
+        if isinstance(response.text, (bytes, bytearray)):
+            content = response.text.decode('utf-8')
 
         content = content.split('\n')
 
@@ -58,7 +57,6 @@ class YandexCalDav:
         await self.asyncer.create_session()
 
         url = f'{self.base_url}/calendars/{self.user_email}'
-        # respone = requests.request("GET", url, headers=self.headers)
 
         response = await self.asyncer.make_request(
             url=url,
@@ -82,7 +80,6 @@ class YandexCalDav:
         await self.asyncer.create_session()
 
         url = f"{self.base_url}{self.main_calendar}{self.user_email}"
-        # return requests.request("GET", url, headers=self.headers).text
 
         response = await self.asyncer.make_request(
             url=url,
@@ -97,7 +94,6 @@ class YandexCalDav:
         await self.asyncer.create_session()
 
         url = f"{self.base_url}{self.main_calendar}{uid}.ics"
-        # return requests.request("GET", url, headers=self.headers).content.decode('utf-8')
 
         response = await self.asyncer.make_request(
             url=url,
@@ -118,7 +114,7 @@ class YandexCalDav:
 
         time_range = f"<C:time-range start=\"{date_from}\" " \
                      f"              end=\"{date_to}\"/>"
-
+        print(time_range)
         url = f"{self.base_url}{self.main_calendar}"
 
         payload = "<?xml version=\"1.0\" encoding=\"utf-8\" ?>\r\n" \
@@ -152,6 +148,13 @@ class YandexCalDav:
             if href and href not in self.period_events_list:
                 uid = href.split('/')[-1].replace('.ics', '')
                 self.period_events_list.append(uid)
+
+                if 'yandex.ru' in uid:
+                    self.yandex_events.append(uid)
+                elif 'google.com' in uid:
+                    self.google_events.append(uid)
+                else:
+                    self.side_events.append(uid)
 
     async def get_all_events(self) -> None:
 
@@ -193,8 +196,6 @@ class YandexCalDav:
         headers['Content-Type'] = 'text/calendar'
         url = f'{self.base_url}{self.main_calendar}{uid}_PIK_SYNCER.ics'
 
-        # return requests.request("PUT", url, headers=self.headers, data=payload)
-
         response = await self.asyncer.make_request(
             url=url,
             method='PUT',
@@ -210,7 +211,6 @@ class YandexCalDav:
         await self.asyncer.create_session()
 
         url = f"{self.base_url}{self.main_calendar}{uid}.ics"
-        # return requests.request("DELETE", url, headers=self.headers)
 
         response = await self.asyncer.make_request(
             url=url,
@@ -227,15 +227,10 @@ class YandexCalDav:
             if 'google.com' not in uid:
                 continue
 
-            #Begin
             caldav_text = self.get_event_by_uid(uid)
             cd_helper = CaldavHelper(caldav_text)
 
-            #Events properties
-            summary = cd_helper.get_summary()
             organizer = cd_helper.get_org_from_main_body()
 
             if self.user_email not in organizer:
-                self.delete_event_by_uid(uid)
-                print(f'Delete {summary}')
-            print('\n<==========================>\n')
+                await self.delete_event_by_uid(uid)

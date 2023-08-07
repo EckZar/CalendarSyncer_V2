@@ -31,27 +31,28 @@ class Synchronizer:
 
                 caldav_event = cut_valarm(caldav_event)
                 caldav_event = cut_org_attendees_to_description(caldav_event)
+
                 result = await cal_service_to.create_event(caldav_event, _)
                 await self.Logger.write([self.user_email, _, result.status_code],
-                                        f'{cal_service_from.service_from}_PUT_{cal_service_to.service_to}_EVENTS')
+                                        f'{cal_service_from.service_from}_PUT_{cal_service_from.service_to}_EVENTS')
             except Exception as e:
                 await self.Logger.write([self.user_email, _, e],
-                                        f'{cal_service_from.service_from}_PUT_{cal_service_to.service_to}_EVENTS_ERROR')
+                                        f'{cal_service_from.service_from}_PUT_{cal_service_from.service_to}_EVENTS_ERROR')
                 continue
 
     async def sync_deleted(self, cal_service_from, cal_service_to):
-        for _ in cal_service_from.period_events_list:
-            if cal_service_from.event_from not in _:
+        for _ in cal_service_to.period_events_list:
+            if cal_service_from.service_from not in _:
                 continue
-            result = list(filter(lambda x: x in _, cal_service_to.events_uids_list))
+            result = list(filter(lambda x: x in _, cal_service_from.events_uids_list))
             if not result:
                 result = await cal_service_to.delete_event_by_uid(_)
                 await self.Logger.write([self.user_email, _, result.status_code],
                                         f'{cal_service_to.service_from}_DELETE_{cal_service_to.service_to}_EVENTS')
 
-    async def delete_events_not_pik_syncer_others_period(self, cal_service_from, cal_service_to):
+    async def delete_events_not_pik_syncer_others_period(self, cal_service):
         for _ in cal_service.period_events_list:
-            if cal_service.event_from not in _:
+            if cal_service.service_from not in _:
                 continue
             if 'PIK_SYNCER' in _:
                 continue
@@ -63,7 +64,7 @@ class Synchronizer:
                 await self.Logger.write([self.user_email, _, result.status_code],
                                         f'{cal_service.service_from}_DELETE_{cal_service.service_to}_EVENTS')
 
-    async def delete_pik_syncer_events(self, cal_service_from, cal_service_to):
+    async def delete_pik_syncer_events(self, cal_service):
         for _ in cal_service.period_events_list:
             if 'PIK_SYNCER' in _:
                 await cal_service.delete_event_by_uid(_)
@@ -168,26 +169,21 @@ async def sync_user_cal(user_email: str) -> None:
     await syncer.y_caldav_service.get_calendars()
 
     # ====== SYNC G<=>Y ======
-    await syncer.sync_events(syncer.g_caldav_service, syncer.y_caldav_service)
+    # await syncer.sync_events(syncer.g_caldav_service, syncer.y_caldav_service)
     await syncer.sync_events(syncer.y_caldav_service, syncer.g_caldav_service)
-
-    # ====== CLEAN DELETED G<=>Y ======
-
-
-
-    # syncer.sync_deleted(syncer.g_caldav_service)
-    # syncer.sync_deleted(syncer.y_caldav_service)
+    #
+    # # ====== CLEAN DELETED G<=>Y ======
+    #
+    # await syncer.sync_deleted(syncer.g_caldav_service, syncer.y_caldav_service)
+    # await syncer.sync_deleted(syncer.y_caldav_service, syncer.g_caldav_service)
     #
     # # ====== ERASE NOT PIK_SYNCER OTHERS EVENTS G<=>Y ======
-    # syncer.delete_events_not_pik_syncer_others_period(syncer.g_caldav_service)
-    # syncer.delete_events_not_pik_syncer_others_period(syncer.y_caldav_service)
+    # await syncer.delete_events_not_pik_syncer_others_period(syncer.g_caldav_service)
+    # await syncer.delete_events_not_pik_syncer_others_period(syncer.y_caldav_service)
 
-    # # ====== ERASE PIK_SYNCER EVENTS G<=>Y ======
+    # ====== ERASE PIK_SYNCER EVENTS G<=>Y ======
     # syncer.delete_pik_syncer_events(syncer.g_caldav_service)
     # syncer.delete_pik_syncer_events(syncer.y_caldav_service)
-
-    # await syncer.requester.close_session()
-
 
     await syncer.Logger.write([syncer.TIME, 'END', user_email], 'Sync_Execution')
     print(f'End SYNC for => {user_email}')
@@ -197,12 +193,11 @@ def start_syncing() -> None:
     users_list = get_users_list()
     for user in users_list:
         user_email = user[0]
-        # try:
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(sync_user_cal(user_email))
-        loop.close()
-        # await sync_user_cal(user_email)
-        # except Exception as e:
-        #     print(e)
-        #     log = Logger(user_email, datetime.now().strftime('%H%M%SZ'))
-        #     log.write([user_email, datetime.now().strftime('%Y%m%dT%H%M%SZ'), e], 'Sync_Execution_ERROR')
+        try:
+            loop = asyncio.get_event_loop()
+            loop.run_until_complete(sync_user_cal(user_email))
+            loop.close()
+        except Exception as e:
+            print(e)
+            log = Logger(user_email, datetime.now().strftime('%H%M%SZ'))
+            asyncio.ensure_future(log.write([user_email, datetime.now().strftime('%Y%m%dT%H%M%SZ'), e], 'Sync_Execution_ERROR'))

@@ -7,8 +7,8 @@ from caldav_helper import CaldavHelper
 from gAuth import get_access_token
 from AsyncHTTPRequester import AsyncHttpRequester
 
-DELTA_TO = 3
-DELTA_FROM = 1
+DELTA_TO = 1
+DELTA_FROM = 0
 
 
 class GoogleCalDav:
@@ -20,6 +20,9 @@ class GoogleCalDav:
         self.base_url: str = 'https://apidata.googleusercontent.com'
         self.events_uids_list: list = []
         self.period_events_list: list = []
+        self.yandex_events: list = []
+        self.google_events: list = []
+        self.side_events: list = []
         self.headers = {
             'Authorization': f'Bearer {get_access_token(user_email)}'
         }
@@ -48,6 +51,8 @@ class GoogleCalDav:
 
         time_range = f"<C:time-range start=\"{date_from}\" " \
                      f"              end=\"{date_to}\"/>"
+
+
 
         payload = "<?xml version=\"1.0\" encoding=\"utf-8\" ?>\r\n" \
                   "<C:calendar-query xmlns:D=\"DAV:\"\r\n" \
@@ -80,6 +85,13 @@ class GoogleCalDav:
             if href not in self.period_events_list:
                 uid = href.split('/')[-1].replace('.ics', '')
                 self.period_events_list.append(uid)
+
+                if 'yandex.ru' in uid:
+                    self.yandex_events.append(uid)
+                elif 'google.com' in uid:
+                    self.google_events.append(uid)
+                else:
+                    self.side_events.append(uid)
 
     async def get_all_events(self) -> None:
 
@@ -146,10 +158,8 @@ class GoogleCalDav:
             caldav_text = self.get_event_by_uid(uid)
             cd_helper = CaldavHelper(caldav_text)
 
-            summary = cd_helper.get_summary()
             organizer = cd_helper.get_org_from_main_body()
 
             if self.user_email not in organizer:
                 await self.delete_event_by_uid(uid)
-                print(f'Delete {summary}')
-            print('\n<==========================>\n')
+
