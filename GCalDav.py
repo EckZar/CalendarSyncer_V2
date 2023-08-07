@@ -5,16 +5,19 @@ import xml.etree.ElementTree as ET
 from config import global_date
 from caldav_helper import CaldavHelper
 
-DELTA_TO = 3
+DELTA_TO = 14
 DELTA_FROM = 0
 
 class GoogleCalDav:
     def __init__(self, user_email):
         self.user_email: str = user_email
+        self.event_code = 'google.com'
         self.base_url: str = 'https://apidata.googleusercontent.com'
         self.events_uids_list: list = []
         self.period_events_list: list = []
-        self.events_list_broken: list = []
+        self.yandex_events: list = []
+        self.google_events: list = []
+        self.side_events: list = []
         self.headers = {
             'Authorization': f'Bearer {get_access_token(user_email)}'
         }
@@ -42,7 +45,7 @@ class GoogleCalDav:
 
         time_range = f"<C:time-range start=\"{date_from}\" " \
                      f"              end=\"{date_to}\"/>"
-
+        print(time_range)
         payload = "<?xml version=\"1.0\" encoding=\"utf-8\" ?>\r\n" \
                   "<C:calendar-query xmlns:D=\"DAV:\"\r\n" \
                                     "xmlns:C=\"urn:ietf:params:xml:ns:caldav\">\r\n\r\n\r\n" \
@@ -67,9 +70,14 @@ class GoogleCalDav:
             href = href_element.text.replace('%40', '@')
             if href not in self.period_events_list:
                 uid = href.split('/')[-1].replace('.ics', '')
-                if 'PIK_SYNCER' in uid:
-                    self.events_list_broken.append(uid)
                 self.period_events_list.append(uid)
+
+                if 'yandex.ru' in uid:
+                    self.yandex_events.append(uid)
+                elif 'google.com' in uid:
+                    self.yandex_events.append(uid)
+                else:
+                    self.side_events.append(uid)
 
     def get_all_events(self) -> None:
 
@@ -92,11 +100,9 @@ class GoogleCalDav:
         tree = ET.fromstring(response.content)
 
         for href_element in tree.iter("{DAV:}href"):
-            href = href_element.text#.replace('%40', '@')
+            href = href_element.text
             if href and href not in self.events_uids_list:
                 uid = href.split('/')[-1].replace('.ics', '')
-                if 'PIK_SYNCER' in uid:
-                    self.events_list_broken.append(uid)
                 self.events_uids_list.append(uid)
 
     def create_event(self, payload, uid):
@@ -113,15 +119,10 @@ class GoogleCalDav:
             if 'yandex.ru' not in uid:
                 continue
 
-            #Begin
             caldav_text = self.get_event_by_uid(uid)
             cd_helper = CaldavHelper(caldav_text)
 
-            #Events properties
-            summary = cd_helper.get_summary()
             organizer = cd_helper.get_org_from_main_body()
 
             if self.user_email not in organizer:
                 self.delete_event_by_uid(uid)
-                print(f'Delete {summary}')
-            print('\n<==========================>\n')

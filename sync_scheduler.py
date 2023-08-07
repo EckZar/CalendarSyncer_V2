@@ -29,4 +29,6 @@ schedule.every(5).minutes.do(run_pe)
 
 
 if __name__ == "__main__":
-    start()
+    # start()
+
+    syncer.start_syncing()

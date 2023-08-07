@@ -10,7 +10,6 @@ from YCalDav import YandexCalDav
 from logEvents import Logger
 from caldav_helper import CaldavHelper
 
-
 THREADS = 10
 
 
@@ -64,6 +63,26 @@ class Synchronizer:
                 self.Logger.write([self.user_email, _, e], 'Y_PUT_G_EVENTS_ERROR')
                 continue
 
+    def sync_side_events(self, cal_service_from, cal_service_to) -> None:
+        for _ in cal_service_from.side_events:
+            try:
+                if 'PIK_SYNCER' in _:
+                    continue
+
+                caldav_event = cal_service_from.get_event_by_uid(_)
+
+                if 'No events found' in caldav_event:
+                    continue
+
+                caldav_event = cut_valarm(caldav_event)
+                caldav_event = cut_org_attendees_to_description(caldav_event)
+
+                result = cal_service_to.create_event(caldav_event, _)
+                self.Logger.write([self.user_email, _, result.status_code], f'{cal_service_from.event_code}_PUT_{cal_service_to.event_code}_EVENTS')
+            except Exception as e:
+                self.Logger.write([self.user_email, _, e], f'{cal_service_from.event_code}_PUT_{cal_service_to.event_code}_EVENTS_ERROR')
+                continue
+
     def sync_deleted_G_from_Y(self):
         for _ in self.y_caldav_service.period_events_list:
             if 'google.com' not in _:
@@ -81,6 +100,8 @@ class Synchronizer:
             if not result:
                 result = self.g_caldav_service.delete_event_by_uid(_)
                 self.Logger.write([self.user_email, _, result.status_code], 'G_DELETE_Y_EVENTS')
+
+    def sync_deleted_side(self):...
 
     def delete_y_events_not_pik_syncer_others_period(self):
         for _ in self.g_caldav_service.period_events_list:
@@ -223,6 +244,9 @@ def sync_user_cal(user_email: str) -> None:
     # ====== SYNC G<=>Y ======
     syncer.sync_google_events_to_yandex()
     syncer.sync_yandex_events_to_google()
+
+    syncer.sync_side_events(syncer.y_caldav_service, syncer.g_caldav_service)
+    syncer.sync_side_events(syncer.g_caldav_service, syncer.y_caldav_service)
 
     # ====== CLEAN DELETED G<=>Y ======
     syncer.sync_deleted_G_from_Y()
