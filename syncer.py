@@ -10,7 +10,7 @@ from YCalDav import YandexCalDav
 from logEvents import Logger
 from caldav_helper import CaldavHelper
 
-THREADS = 10
+THREADS = 5
 
 
 class Synchronizer:
@@ -265,8 +265,7 @@ def sync_user_cal(user_email: str) -> None:
     print(f'End SYNC for => {user_email}')
 
 
-def start_syncing() -> None:
-    users_list = get_users_list()
+def start_syncing(users_list) -> None:
     for user in users_list:
         user_email = user[0]
         try:
@@ -286,3 +285,23 @@ def process_sync_execution_errors() -> None:
             print(e)
             log = Logger(user_email, datetime.datetime.now().strftime('%H%M%SZ'))
             log.write([user_email, datetime.datetime.now().strftime('%Y%m%dT%H%M%SZ'), e], 'Sync_Execution_ERROR')
+
+
+def separate_processes():
+    all_users_list = get_users_list()
+    print(f'Users list len => {len(all_users_list)}')
+    users_batch_limit = math.ceil(len(all_users_list)/THREADS)
+    users_batch = []
+
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        for user in all_users_list:
+            users_batch.append(user)
+            if len(users_batch) == users_batch_limit:
+                executor.submit(start_syncing, users_batch)
+                users_batch = []
+
+        if len(users_batch) > 0:
+            executor.submit(start_syncing, users_batch)
+
+if __name__ == "__main__":
+    separate_processes()
