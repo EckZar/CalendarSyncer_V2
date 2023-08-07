@@ -45,7 +45,7 @@ class GoogleCalDav:
 
         time_range = f"<C:time-range start=\"{date_from}\" " \
                      f"              end=\"{date_to}\"/>"
-        print(time_range)
+
         payload = "<?xml version=\"1.0\" encoding=\"utf-8\" ?>\r\n" \
                   "<C:calendar-query xmlns:D=\"DAV:\"\r\n" \
                                     "xmlns:C=\"urn:ietf:params:xml:ns:caldav\">\r\n\r\n\r\n" \

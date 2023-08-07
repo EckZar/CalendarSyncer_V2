@@ -256,7 +256,7 @@ def sync_user_cal(user_email: str) -> None:
     syncer.delete_g_events_not_pik_syncer_others_period()
     syncer.delete_y_events_not_pik_syncer_others_period()
 
-    # # ====== ERASE PIK_SYNCER EVENTS G<=>Y ======
+    # ====== ERASE PIK_SYNCER EVENTS G<=>Y ======
     # syncer.delete_g_pik_syncer_events()
     # syncer.delete_y_pik_syncer_events()
 
